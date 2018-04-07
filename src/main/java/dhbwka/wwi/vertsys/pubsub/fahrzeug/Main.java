@@ -90,6 +90,7 @@ public class Main {
         // werden.
         sm.message = StatusType.VEHICLE_READY + "";
         System.out.println("Message: " + sm.message);
+        Vehicle vehicle = new Vehicle(vehicleId, waypoints);
 
         // TODO: Thread starten, der jede Sekunde die aktuellen Sensorwerte
         // des Fahrzeugs ermittelt und verschickt. Die Sensordaten sollen
@@ -103,7 +104,11 @@ public class Main {
                 String msg = "";
 
                 SensorMessage sem = new SensorMessage();
+                sem = vehicle.getSensorData();
+                
                 topic = Utils.MQTT_TOPIC_NAME + "/" + sem.vehicleId;
+                
+                
                 String motorAn = "nein";
                 if (sem.running) {
                     motorAn = "ja";
@@ -146,13 +151,15 @@ public class Main {
         }, 0, 1, TimeUnit.SECONDS);
         
         
+        
+        
         //Timer timer = new Timer();
         //timer.schedule(thread, 0, 5000);
         //thread.start();
         
 
-        Vehicle vehicle = new Vehicle(vehicleId, waypoints);
-        vehicle.startVehicle();
+        
+        vehicle.startVehicle();        
 
         // Warten, bis das Programm beendet werden soll
         Utils.fromKeyboard.readLine();
