@@ -19,6 +19,9 @@ import java.util.List;
 import java.util.Scanner;
 import java.lang.Object;
 import java.util.Timer;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
@@ -35,7 +38,6 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
  * Goolge Maps eine Nachkommastelle mehr, als das ITN-Format erlaubt. :-)
  */
 public class Main {
-     
 
     public static void main(String[] args) throws Exception {
         // Fahrzeug-ID abfragen
@@ -59,7 +61,7 @@ public class Main {
 
         System.out.println();
         int index = Integer.parseInt(Utils.askInput("Zu fahrende Strecke", "0"));
-        
+
         // TODO: Methode parseItnFile() unten ausprogrammieren
         List<WGS84> waypoints = parseItnFile(new File(workdir, waypointFiles[index]));
 
@@ -70,16 +72,14 @@ public class Main {
         // LastWill-Nachricht gesendet wird, die auf den Verbindungsabbruch
         // hinweist. Die Nachricht soll eine "StatusMessage" sein, bei der das
         // Feld "type" auf "StatusType.CONNECTION_LOST" gesetzt ist.
-        
         StatusMessage sm = new StatusMessage();
         //sm.fromJson(json);
-        
+
         MqttConnectOptions mq = new MqttConnectOptions();
         mq.setWill(Utils.MQTT_TOPIC_NAME, sm.toJson(), 0, true);
-    
+
         // Die Nachricht muss dem MqttConnectOptions-Objekt übergeben werden
         // und soll an das Topic Utils.MQTT_TOPIC_NAME gesendet werden.
-        
         // TODO: Verbindung zum MQTT-Broker herstellen.
         MemoryPersistence persistance = new MemoryPersistence();
         MqttClient client = new MqttClient(mqttAddress, vehicleId, persistance);//nach dennis ist das richtig
@@ -90,66 +90,67 @@ public class Main {
         // werden.
         sm.message = StatusType.VEHICLE_READY + "";
         System.out.println("Message: " + sm.message);
-        
-        
+
         // TODO: Thread starten, der jede Sekunde die aktuellen Sensorwerte
         // des Fahrzeugs ermittelt und verschickt. Die Sensordaten sollen
         // an das Topic Utils.MQTT_TOPIC_NAME + "/" + vehicleId gesendet werden.
-        
-        
         //Hintergrung Thread aufbauen
-        Thread thread = new Thread(new Runnable() {
-            @Override public void run() {
+        ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();        
+        exec.scheduleAtFixedRate(new Runnable() {
+            @Override
+            public void run() {
                 String topic = "";
                 String msg = "";
-                
+
                 SensorMessage sem = new SensorMessage();
                 topic = Utils.MQTT_TOPIC_NAME + "/" + sem.vehicleId;
                 String motorAn = "nein";
-                if(sem.running){
+                if (sem.running) {
                     motorAn = "ja";
                 }
-                msg = "Sensordaten: " + 
-                        "Zeitpunkt: " + sem.time +
-                        "Motor an? " +motorAn + 
-                        "\n Killometer/Stunde: " + sem.kmh + 
-                        "\n Latitude: " + sem.latitude + 
-                        "\n Longitude: " + sem.longitude + 
-                        "\n Drehzahl: " + sem.rpm + 
-                        "\n eingelegter Gang: " + sem.gear;
-            // do stuff in this thread
-            
-            // hier kann ich mich an dem Sender-Beispiel orientieren
+                msg = "Sensordaten: "
+                        + "Zeitpunkt: " + sem.time
+                        + "Motor an? " + motorAn
+                        + "\n Killometer/Stunde: " + sem.kmh
+                        + "\n Latitude: " + sem.latitude
+                        + "\n Longitude: " + sem.longitude
+                        + "\n Drehzahl: " + sem.rpm
+                        + "\n eingelegter Gang: " + sem.gear;
+                // do stuff in this thread
+
+                // hier kann ich mich an dem Sender-Beispiel orientieren
                 int qos = 0;
-            
-                try{
+
+                try {
                     mq.setCleanSession(false);
-            
+
                     System.out.println("Connect to Broker: " + mqttAddress);
-            
+
                     client.connect(mq);
                     System.out.println("Connected");
                     System.out.println("Message: \n" + msg);
-            
+
                     MqttMessage mqttmsg = new MqttMessage(msg.getBytes());
                     mqttmsg.setQos(qos);
                     client.publish(topic, mqttmsg);
-            
+
                     System.out.println("Message send:");
-            
+
                     client.disconnect();
                     System.out.println("Disconnected");
-            
-                }catch(MqttException e){
+
+                } catch (MqttException e) {
                     e.printStackTrace();
                 }
             }
-        });
+        }, 0, 1, TimeUnit.SECONDS);
+        
         
         //Timer timer = new Timer();
         //timer.schedule(thread, 0, 5000);
-        thread.start();
+        //thread.start();
         
+
         Vehicle vehicle = new Vehicle(vehicleId, waypoints);
         vehicle.startVehicle();
 
@@ -157,19 +158,18 @@ public class Main {
         Utils.fromKeyboard.readLine();
 
         vehicle.stopVehicle();
-        
+
         // TODO: Oben vorbereitete LastWill-Nachricht hier manuell versenden,
         // da sie bei einem regulären Verbindungsende nicht automatisch
         // verschickt wird.
-        
-        if(!client.isConnected()){
+        if (!client.isConnected()) {
             System.out.println("Last-Will-Msg: " + mq.getWillMessage());
         }
-        
+
         // Anschließend die Verbindung trennen und den oben gestarteten Thread
         // beenden, falls es kein Daemon-Thread ist.
-        
-        thread.stop();
+        //thread.stop();
+        exec.shutdown();
     }
 
     /**
@@ -196,34 +196,32 @@ public class Main {
         List<WGS84> waypoints = new ArrayList<>();
 
         // TODO: Übergebene Datei parsen und Liste "waypoints" damit füllen
-        
-        BufferedReader reader = new BufferedReader(new FileReader (file));
-        String         line = null;
-        StringBuilder  stringBuilder = new StringBuilder();
-        String         ls = System.getProperty("line.separator");
+        BufferedReader reader = new BufferedReader(new FileReader(file));
+        String line = null;
+        StringBuilder stringBuilder = new StringBuilder();
+        String ls = System.getProperty("line.separator");
 
-    try {
-        System.out.println("List of Waypoints:");
-        while((line = reader.readLine()) != null) {
-            
-            String line2 = line;
-                
-            String latitude = line2.substring(0,7);
-            String longitude = line2.substring(8,15);
-            // nice to Have: die Bezeichnung der Wegpunkte
-            String bezeichnung = line2.substring(16,line.length());
-            System.out.println(latitude + "," + longitude + "," + bezeichnung);
-           
-            double latitudeZahl = Double.parseDouble(latitude);
-            double longitudeZahl = Double.parseDouble(longitude);
-            WGS84 object = new WGS84(latitudeZahl,longitudeZahl);
-            waypoints.add(object); 
+        try {
+            System.out.println("List of Waypoints:");
+            while ((line = reader.readLine()) != null) {
+
+                String line2 = line;
+
+                String latitude = line2.substring(0, 7);
+                String longitude = line2.substring(8, 15);
+                // nice to Have: die Bezeichnung der Wegpunkte
+                String bezeichnung = line2.substring(16, line.length());
+                System.out.println(latitude + "," + longitude + "," + bezeichnung);
+
+                double latitudeZahl = Double.parseDouble(latitude);
+                double longitudeZahl = Double.parseDouble(longitude);
+                WGS84 object = new WGS84(latitudeZahl, longitudeZahl);
+                waypoints.add(object);
             }
             return waypoints;
         } finally {
             reader.close();
         }
-     
+
     }
 }
-
