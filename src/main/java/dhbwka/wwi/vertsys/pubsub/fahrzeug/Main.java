@@ -9,6 +9,7 @@
  */
 package dhbwka.wwi.vertsys.pubsub.fahrzeug;
 
+import com.google.gson.JsonObject;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -73,7 +74,6 @@ public class Main {
         // hinweist. Die Nachricht soll eine "StatusMessage" sein, bei der das
         // Feld "type" auf "StatusType.CONNECTION_LOST" gesetzt ist.
         StatusMessage sm = new StatusMessage();
-        //sm.fromJson(json);
 
         MqttConnectOptions mq = new MqttConnectOptions();
         mq.setWill(Utils.MQTT_TOPIC_NAME, sm.toJson(), 0, true);
@@ -84,7 +84,7 @@ public class Main {
         MemoryPersistence persistance = new MemoryPersistence();
         MqttClient client = new MqttClient(mqttAddress, vehicleId, persistance);//nach dennis ist das richtig
 
-        System.out.println("Client-ID:" + client.toString());
+        System.out.println("Client-ID:" + client.getClientId());
         // TODO: Statusmeldung mit "type" = "StatusType.VEHICLE_READY" senden.
         // Die Nachricht soll soll an das Topic Utils.MQTT_TOPIC_NAME gesendet
         // werden.
@@ -96,7 +96,7 @@ public class Main {
         // des Fahrzeugs ermittelt und verschickt. Die Sensordaten sollen
         // an das Topic Utils.MQTT_TOPIC_NAME + "/" + vehicleId gesendet werden.
         //Hintergrung Thread aufbauen
-        ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();        
+        ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();
         exec.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -105,15 +105,17 @@ public class Main {
 
                 SensorMessage sem = new SensorMessage();
                 sem = vehicle.getSensorData();
-                
+
                 topic = Utils.MQTT_TOPIC_NAME + "/" + sem.vehicleId;
-                
-                
+
                 String motorAn = "nein";
                 if (sem.running) {
                     motorAn = "ja";
                 }
-                msg = "Sensordaten: "
+                byte[] bytes = sem.toJson();
+                msg = new String(bytes);
+
+                /*msg = "Sensordaten: "
                         + "Zeitpunkt: " + sem.time
                         + "Motor an? " + motorAn
                         + "\n Killometer/Stunde: " + sem.kmh
@@ -121,45 +123,30 @@ public class Main {
                         + "\n Longitude: " + sem.longitude
                         + "\n Drehzahl: " + sem.rpm
                         + "\n eingelegter Gang: " + sem.gear;
+                 */
                 // do stuff in this thread
-
                 // hier kann ich mich an dem Sender-Beispiel orientieren
                 int qos = 0;
 
                 try {
                     mq.setCleanSession(false);
-
-                    System.out.println("Connect to Broker: " + mqttAddress);
-
+                    //System.out.println("Connect to Broker: " + mqttAddress);
                     client.connect(mq);
-                    System.out.println("Connected");
-                    System.out.println("Message: \n" + msg);
-
+                    //System.out.println("Connected");
+                    System.out.println(topic + " -> " + msg);
                     MqttMessage mqttmsg = new MqttMessage(msg.getBytes());
                     mqttmsg.setQos(qos);
                     client.publish(topic, mqttmsg);
-
-                    System.out.println("Message send:");
-
+                    //System.out.println("Message send:");
                     client.disconnect();
-                    System.out.println("Disconnected");
-
+                    //System.out.println("Disconnected");
                 } catch (MqttException e) {
                     e.printStackTrace();
                 }
             }
         }, 0, 1, TimeUnit.SECONDS);
-        
-        
-        
-        
-        //Timer timer = new Timer();
-        //timer.schedule(thread, 0, 5000);
-        //thread.start();
-        
 
-        
-        vehicle.startVehicle();        
+        vehicle.startVehicle();
 
         // Warten, bis das Programm beendet werden soll
         Utils.fromKeyboard.readLine();
@@ -201,25 +188,43 @@ public class Main {
      */
     public static List<WGS84> parseItnFile(File file) throws IOException {
         List<WGS84> waypoints = new ArrayList<>();
-
-        // TODO: Übergebene Datei parsen und Liste "waypoints" damit füllen
+        // TODO: Übergebene Datei parsen und Liste "waypoints" damit füllen     
+        try {
+            BufferedReader in = new BufferedReader(new FileReader(file));
+            String str;
+            str = in.readLine();
+            while ((str = in.readLine()) != null) {
+                System.out.println(str);
+                String[] ar = str.split("\\|");
+                String latitude = ar[0];
+                String longitude = ar[1];
+                String bezeichnung = ar[2];
+                double latitudeZahl = Double.parseDouble(latitude);
+                double longitudeZahl = Double.parseDouble(longitude);
+                WGS84 object = new WGS84(latitudeZahl, longitudeZahl);
+                System.out.println(latitude + "," + longitude + "," + bezeichnung);
+                waypoints.add(object);
+            }
+            in.close();
+            
+        } catch (IOException e) {
+            System.out.println("File Read Error");
+        }
+        return waypoints;
+        /*
         BufferedReader reader = new BufferedReader(new FileReader(file));
         String line = null;
         StringBuilder stringBuilder = new StringBuilder();
         String ls = System.getProperty("line.separator");
-
         try {
             System.out.println("List of Waypoints:");
             while ((line = reader.readLine()) != null) {
-
                 String line2 = line;
-
                 String latitude = line2.substring(0, 7);
                 String longitude = line2.substring(8, 15);
                 // nice to Have: die Bezeichnung der Wegpunkte
                 String bezeichnung = line2.substring(16, line.length());
                 System.out.println(latitude + "," + longitude + "," + bezeichnung);
-
                 double latitudeZahl = Double.parseDouble(latitude);
                 double longitudeZahl = Double.parseDouble(longitude);
                 WGS84 object = new WGS84(latitudeZahl, longitudeZahl);
@@ -229,6 +234,7 @@ public class Main {
         } finally {
             reader.close();
         }
-
+         */
     }
+
 }
